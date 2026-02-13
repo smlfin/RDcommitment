@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RD Daily Commitment / Achievement Form</title>
+
+<style>
+body { font-family: Arial, sans-serif; background:#f4f6f8; margin: 0; padding: 0; }
+.card { max-width:420px; margin:20px auto; background:#fff; padding:16px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.1); position: relative; }
+h3 { margin-top:0; }
+label { display:block; margin-top:12px; font-weight: bold; }
+input, select, button { width:100%; padding:10px; margin-top:4px; font-size:16px; box-sizing: border-box; }
+button { margin-top:16px; background:#0b5ed7; color:#fff; border:none; border-radius:4px; cursor: pointer; }
+button:disabled { background:#999; cursor: not-allowed; }
+input:disabled { background-color: #e9ecef; color: #495057; }
+
+/* --- Fixed Middle Loading Animation --- */
+#loaderOverlay {
+  display: none; /* Hidden by default */
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(255, 255, 255, 0.8);
+  z-index: 10;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  border-radius: 8px;
+}
+.spinner {
+  width: 40px; height: 40px;
+  border: 5px solid #f3f3f3;
+  border-top: 5px solid #0b5ed7;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+.status-text { margin-top: 10px; font-weight: bold; color: #0b5ed7; font-size: 14px; }
+</style>
+</head>
+
+<body>
+
+<div class="card">
+  <div id="loaderOverlay">
+    <div class="spinner"></div>
+    <div class="status-text" id="status">Loading...</div>
+  </div>
+
+  <h3>RD Daily Commitment / Achievement Form</h3>
+
+  <label>Select Date</label>
+  <input type="date" id="dateInput">
+
+  <label>Entry Type</label>
+  <select id="type" onchange="updateFormState()">
+    <option value="Commitment">Morning Commitment</option>
+    <option value="Evening">Evening Achievement</option>
+  </select>
+
+  <label>Branch</label>
+  <select id="branch" onchange="handleBranchChange()">
+    <option value="">-- Select Branch --</option>
+  </select>
+
+  <label>Branch Head</label>
+  <input id="bh">
+
+  <label>Monthly Target</label>
+  <input id="target" type="number">
+
+  <label>Commitment</label>
+  <input id="commitment" type="number">
+
+  <label>Achievement</label>
+  <input id="achievement" type="number">
+
+  <label>No. of Staff</label>
+  <input id="staff" type="number">
+
+  <label>No. of Non-Participants</label>
+  <input id="nonp" type="number">
+
+  <button id="submitBtn" onclick="submitEntry()">Submit</button>
+  <button onclick="openReport()" style="background:#198754">📊 Open Day Report</button>
+</div>
+
+<script>
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwlm0vWQ8PWfhikA93gYimNDBjSIWgNVc3JS71hvTyEsT8HngKB00nHChpB-D_Gkj8BkQ/exec";
+
+const el = id => document.getElementById(id);
+const els = {
+  date: el("dateInput"),
+  type: el("type"),
+  branch: el("branch"),
+  bh: el("bh"),
+  target: el("target"),
+  commitment: el("commitment"),
+  achievement: el("achievement"),
+  staff: el("staff"),
+  nonp: el("nonp"),
+  status: el("status"),
+  overlay: el("loaderOverlay"),
+  btn: el("submitBtn")
+};
+
+/* --- UI Helpers --- */
+function showLoading(show, text = "") {
+  els.overlay.style.display = show ? "flex" : "none";
+  els.status.innerText = text;
+  els.btn.disabled = show;
+}
+
+function clearForm() {
+  els.branch.value = "";
+  els.bh.value = "";
+  els.target.value = "";
+  els.commitment.value = "";
+  els.achievement.value = "";
+  els.staff.value = "";
+  els.nonp.value = "";
+}
+
+/* Set Default Date to Today */
+els.date.value = new Date().toISOString().slice(0,10);
+
+/* 1) Load Branches on Startup */
+window.onload = () => {
+  showLoading(true, "Loading branches...");
+  fetch(SCRIPT_URL + "?action=branches")
+    .then(r => r.json())
+    .then(list => {
+      els.branch.innerHTML = '<option value="">-- Select Branch --</option>';
+      list.forEach(b => els.branch.add(new Option(b, b)));
+      showLoading(false);
+    })
+    .catch(() => showLoading(false, "Error loading branches"));
+};
+
+function updateFormState(){
+  const isMorning = els.type.value === "Commitment";
+  ["bh", "target", "commitment", "staff"].forEach(i => els[i].disabled = !isMorning);
+  ["achievement", "nonp"].forEach(i => els[i].disabled = isMorning);
+}
+
+/* 2) Branch Change & Morning Data Sync */
+function handleBranchChange(){
+  if (!els.branch.value) return;
+
+  showLoading(true, "Fetching branch data...");
+
+  // CHANGE: Added &date=${els.date.value} to the URL
+  fetch(`${SCRIPT_URL}?action=target&branch=${els.branch.value}&date=${els.date.value}`)
+    .then(r => r.json())
+    .then(data => {
+      // The backend will now return the 'Remaining Target' for the selected date
+      els.target.value = data.target || 0;
+      els.staff.value = data.staff || 0;
+      els.bh.value = data.bh || "";
+      
+      if (els.type.value === "Evening") {
+        return fetch(`${SCRIPT_URL}?action=getMorning&date=${els.date.value}&branch=${els.branch.value}`)
+          .then(r => r.json())
+          .then(d => {
+            if (d && d.found) {
+              els.bh.value = d.branchHead;
+              els.commitment.value = d.commitment;
+              els.staff.value = d.staff;
+              els.target.value = d.target; // Keep target consistent with morning entry
+            } else {
+              alert("Morning entry not found for " + els.date.value);
+            }
+          });
+      }
+    })
+    .finally(() => showLoading(false));
+}
+
+function openReport(){ window.location.href = "report.html"; }
+
+/* 3) Submit & Clear */
+function submitEntry(){
+  if(!els.branch.value) { alert("Please select a branch"); return; }
+  
+  showLoading(true, "Submitting entry...");
+
+  fetch(SCRIPT_URL, {
+    method: "POST",
+    mode: "no-cors",
+    body: JSON.stringify({
+      entryType: els.type.value,
+      branch: els.branch.value,
+      branchHead: els.bh.value,
+      target: +els.target.value,
+      commitment: +els.commitment.value,
+      achievement: +els.achievement.value,
+      staff: +els.staff.value,
+      nonParticipant: +els.nonp.value,
+      customDate: els.date.value // Sending user-selected date
+    })
+  }).then(() => {
+    showLoading(false, "Saved successfully!");
+    clearForm();
+    setTimeout(() => { els.status.innerText = "Loading..."; }, 2000);
+  }).catch(() => {
+    showLoading(false, "Submission failed.");
+  });
+}
+
+updateFormState();
+</script>
+</body>
+</html>

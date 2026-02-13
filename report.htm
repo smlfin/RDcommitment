@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RD Reports</title>
+
+<style>
+body{ font-family: Arial, sans-serif; background:#f4f6f8; }
+.card{ max-width:1100px; margin:20px auto; background:#fff; padding:16px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.1); }
+h3{ margin-top:0 }
+label{ display:block; margin-top:10px }
+input, select, button{ padding:8px; margin-top:4px; font-size:15px; }
+button{ background:#0b5ed7; color:#fff; border:none; border-radius:4px; cursor:pointer; }
+button.secondary{ background:#198754; }
+button.back{ background:#6c757d; }
+table{ width:100%; border-collapse:collapse; margin-top:12px; }
+th,td{ border:1px solid #ccc; padding:6px; text-align:center; font-size:14px; }
+th{ background:#f1f3f5; }
+.status{ margin-top:8px; color:#666; }
+hr{ margin:20px 0; }
+</style>
+</head>
+
+<body>
+
+<div class="card">
+<h3>📊 Day Report (All Branches)</h3>
+
+<label>Select Date</label>
+<input type="date" id="dayDate">
+<button onclick="loadTodayReport()">Today</button>
+<button onclick="loadDayReport()">Get Report</button>
+<div class="status" id="dayStatus"></div>
+
+<table>
+<thead>
+<tr>
+  <th>Branch</th>
+  <th>Branch Head</th>
+  <th>Target</th>
+  <th>Commitment</th>
+  <th>Achievement</th> </tr>
+</thead>
+<tbody id="dayBody"></tbody>
+</table>
+
+<hr>
+
+<h3>📈 Branch History (Across Dates)</h3>
+<label>Select Branch</label>
+<select id="histBranch"></select>
+
+<label>From Date</label>
+<input type="date" id="fromDate">
+<label>To Date</label>
+<input type="date" id="toDate">
+
+<button class="secondary" onclick="loadBranchHistory()">Get Branch History</button>
+<div class="status" id="histStatus"></div>
+
+<table>
+<thead>
+<tr>
+  <th>Date</th>
+  <th>Branch</th> <th>Type</th>
+  <th>Branch Head</th>
+  <th>Target</th>
+  <th>Commitment</th>
+  <th>Achievement</th>
+  <th>No of Staff</th>
+<th>No of Non Partcipants</th>
+  <th>Shortfall</th>
+</tr>
+</thead>
+<tbody id="histBody"></tbody>
+</table>
+
+<hr>
+<button class="back" onclick="goBack()">⬅ Back to Entry</button>
+</div>
+
+<script src="report.js"></script>
+</body>
+</html>
