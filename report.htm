@@ -74,6 +74,25 @@ hr{ margin:20px 0; }
 </thead>
 <tbody id="histBody"></tbody>
 </table>
+<hr>
+<h3>🕵️ Continuous Zero Achievers</h3>
+<label>Minimum Days of Zero Achievement</label>
+<input type="number" id="minDays" value="3" min="1">
+
+<button class="secondary" style="background:#dc3545;" onclick="findZeroAchievers()">Find Zero Achievers</button>
+<div class="status" id="zeroStatus"></div>
+
+<table>
+<thead>
+<tr>
+  <th>Branch</th>
+  <th>Branch Head</th>
+  <th>Continuous Zero Achievement Days</th>
+  <th>Period</th>
+</tr>
+</thead>
+<tbody id="zeroBody"></tbody>
+</table>
 
 <hr>
 <button class="back" onclick="goBack()">⬅ Back to Entry</button>
