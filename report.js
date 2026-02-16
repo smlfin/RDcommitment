@@ -144,6 +144,92 @@ function loadBranchHistory(){
       histStatus.innerText = "Error loading history: " + err.message;
     });
 }
+function findZeroAchievers() {
+  const zeroBody = document.getElementById("zeroBody");
+  const zeroStatus = document.getElementById("zeroStatus");
+  const minDaysInput = document.getElementById("minDays");
+  const minDays = parseInt(minDaysInput.value) || 1; // Default to 1 to see all zero achievers
+
+  zeroBody.innerHTML = "";
+  zeroStatus.innerText = "Analyzing history from Feb 11th onwards...";
+
+  // Set the base date to Feb 11, 2026
+  const baseStartDate = "2026-02-13";
+  // Set the end date to today or the current date in the picker
+  const endDate = new Date().toISOString().slice(0, 10);
+
+  const params = new URLSearchParams({
+    action: "branchHistory",
+    branch: "ALL",
+    from: baseStartDate,
+    to: endDate
+  });
+
+  fetch(`${SCRIPT_URL}?${params}`)
+    .then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    })
+    .then(list => {
+      if (!Array.isArray(list) || list.length === 0) {
+        zeroStatus.innerText = "No data found since Feb 11th.";
+        return;
+      }
+
+      // Group data by branch
+      const branchGroups = {};
+      list.forEach(row => {
+        const branchName = row.branch || "Unknown";
+        if (!branchGroups[branchName]) branchGroups[branchName] = [];
+        branchGroups[branchName].push(row);
+      });
+
+      let foundAny = false;
+
+      for (const branch in branchGroups) {
+        // Sort chronologically
+        const history = branchGroups[branch].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        let currentStreak = 0;
+        let streakStartDate = null;
+        let branchHead = history[0]?.branchHead || "—";
+
+        // Logic: Calculate the streak of zero achievement
+        for (let i = 0; i < history.length; i++) {
+          const ach = Number(history[i].achievement || 0);
+
+          if (ach === 0) {
+            currentStreak++;
+            if (currentStreak === 1) streakStartDate = history[i].date;
+          } else {
+            // If they hit a target, the streak resets
+            currentStreak = 0;
+            streakStartDate = null;
+          }
+        }
+
+        // Display branch if they have at least 1 day (or your minDays) of zero achievement
+        if (currentStreak >= minDays) {
+          foundAny = true;
+          const periodDisplay = `${streakStartDate} → ${history[history.length - 1].date}`;
+
+          zeroBody.innerHTML += `
+            <tr style="background:#fff5f5;">
+              <td>${branch}</td>
+              <td>${branchHead}</td>
+              <td style="color:red; font-weight:bold;">${currentStreak} days</td>
+              <td>${periodDisplay}</td>
+            </tr>`;
+        }
+      }
+
+      zeroStatus.innerText = foundAny ? "" : "No zero achievers found in this period.";
+    })
+    .catch(err => {
+      console.error(err);
+      zeroStatus.innerText = "Error: " + err.message;
+    });
+}
 
 /* ---------- Navigation ---------- */
 function goBack(){
