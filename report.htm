@@ -1,103 +1,246 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RD Reports</title>
+<!-- ═══ REPORTS SECTION ═══ -->
+<!-- Include this fragment inside the .main div of index.html,
+     or use as a standalone reference for the reports tab content -->
 
-<style>
-body{ font-family: Arial, sans-serif; background:#f4f6f8; }
-.card{ max-width:1100px; margin:20px auto; background:#fff; padding:16px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.1); }
-h3{ margin-top:0 }
-label{ display:block; margin-top:10px }
-input, select, button{ padding:8px; margin-top:4px; font-size:15px; }
-button{ background:#0b5ed7; color:#fff; border:none; border-radius:4px; cursor:pointer; }
-button.secondary{ background:#198754; }
-button.back{ background:#6c757d; }
-table{ width:100%; border-collapse:collapse; margin-top:12px; }
-th,td{ border:1px solid #ccc; padding:6px; text-align:center; font-size:14px; }
-th{ background:#f1f3f5; }
-.status{ margin-top:8px; color:#666; }
-hr{ margin:20px 0; }
-</style>
-</head>
+<div class="section" id="sec-reports">
 
-<body>
+  <!-- Password Gate -->
+  <div id="rGate" class="card">
+    <div class="card-head">
+      <div class="card-title">🔒 Reports — Password Required</div>
+    </div>
+    <div style="max-width:320px">
+      <div class="fg" style="margin-bottom:13px">
+        <label>Password</label>
+        <input type="password" id="rPwd" placeholder="Enter password" onkeydown="if(event.key==='Enter')unlockReports()"/>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="unlockReports()">Unlock Reports</button>
+      </div>
+      <div id="rPwdErr" style="display:none;color:var(--red);font-size:12px;margin-top:10px;font-weight:500">Incorrect password. Try again.</div>
+    </div>
+  </div>
 
-<div class="card">
-<h3>📊 Day Report (All Branches)</h3>
+  <!-- Report Content (hidden until unlocked) -->
+  <div id="rContent" style="display:none">
 
-<label>Select Date</label>
-<input type="date" id="dayDate">
-<button onclick="loadTodayReport()">Today</button>
-<button onclick="loadDayReport()">Get Report</button>
-<div class="status" id="dayStatus"></div>
+    <!-- Sub-nav -->
+    <div class="r-subnav">
+      <button class="r-sub-btn active" data-rsub="daily"      onclick="switchReport(this)">Daily Report</button>
+      <button class="r-sub-btn"        data-rsub="detailed"   onclick="switchReport(this)">Detailed Report</button>
+      <button class="r-sub-btn"        data-rsub="performance" onclick="switchReport(this)">Branch Performance</button>
+      <button class="r-sub-btn"        data-rsub="drr"        onclick="switchReport(this)">DRR Analysis</button>
+      <button class="r-sub-btn"        data-rsub="zero"       onclick="switchReport(this)">Zero Achievement</button>
+    </div>
 
-<table>
-<thead>
-<tr>
-  <th>Branch</th>
-  <th>Branch Head</th>
-  <th>Target</th>
-  <th>Commitment</th>
-  <th>Achievement</th> </tr>
-</thead>
-<tbody id="dayBody"></tbody>
-</table>
+    <!-- DAILY REPORT -->
+    <div class="r-section active" id="rsec-daily">
+      <div class="card">
+        <div class="card-head"><div class="card-title">Daily Report</div></div>
+        <div class="frow" style="margin-bottom:16px">
+          <div class="fg">
+            <label>Date</label>
+            <input type="date" id="rDate" onchange="loadDailyReport()"/>
+          </div>
+          <div class="fg">
+            <label>View</label>
+            <select id="rView" onchange="loadDailyReport()">
+              <option value="commitment">Commitment</option>
+              <option value="both">Commitment &amp; Achievement</option>
+            </select>
+          </div>
+        </div>
+        <div class="spin-wrap" id="rDailySpin" style="display:none"><div class="spinner"></div>Loading report…</div>
+        <div id="rDailyOut" style="display:none">
+          <div class="r-section-label">All Branches</div>
+          <div class="tbl-wrap">
+            <table class="rtbl">
+              <thead id="rDailyHead"></thead>
+              <tbody id="rDailyBody"></tbody>
+            </table>
+          </div>
+          <div id="rNotPanel" style="margin-top:20px;display:none">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+              <div id="rNoCom" style="display:none">
+                <div class="r-section-label" style="color:var(--red)">Commitment Not Submitted</div>
+                <div class="tag-list" id="rNoComList"></div>
+              </div>
+              <div id="rNoAch" style="display:none">
+                <div class="r-section-label" style="color:var(--amber)">Achievement Not Submitted</div>
+                <div class="tag-list" id="rNoAchList"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-<hr>
+    <!-- DETAILED REPORT -->
+    <div class="r-section" id="rsec-detailed">
+      <div class="card">
+        <div class="card-head"><div class="card-title">Detailed Report</div></div>
+        <div class="frow" style="margin-bottom:16px">
+          <div class="fg">
+            <label>Month</label>
+            <input type="month" id="dMonth"/>
+          </div>
+          <div class="fg">
+            <label>Product</label>
+            <select id="dProduct">
+              <option value="investment">Investment</option>
+              <option value="rd">RD</option>
+              <option value="joint">Investment + RD (Joint)</option>
+            </select>
+          </div>
+        </div>
+        <div class="btn-row" style="margin-bottom:16px">
+          <button class="btn btn-primary" onclick="loadDetailedReport()">Generate Report</button>
+        </div>
+        <div class="spin-wrap" id="rDetSpin" style="display:none"><div class="spinner"></div>Loading report…</div>
+        <div id="rDetOut" style="display:none">
+          <div class="tbl-wrap">
+            <table class="rtbl">
+              <thead id="rDetHead"></thead>
+              <tbody id="rDetBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
 
-<h3>📈 Branch History (Across Dates)</h3>
-<label>Select Branch</label>
-<select id="histBranch"></select>
+    <!-- ══ BRANCH PERFORMANCE OVER TIME ══ -->
+    <div class="r-section" id="rsec-performance">
+      <div class="card">
+        <div class="card-head"><div class="card-title">📈 Branch Performance Over Time</div></div>
+        <div class="frow" style="margin-bottom:4px">
+          <div class="fg">
+            <label>Branch</label>
+            <select id="perfBranch">
+              <option value="">— Select Branch —</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>Month</label>
+            <input type="month" id="perfMonth"/>
+          </div>
+        </div>
+        <div class="frow" style="margin-bottom:16px">
+          <div class="fg">
+            <label>Product</label>
+            <select id="perfProduct">
+              <option value="both">Investment + RD</option>
+              <option value="investment">Investment Only</option>
+              <option value="rd">RD Only</option>
+            </select>
+          </div>
+          <div class="fg" style="justify-content:flex-end;padding-top:18px">
+            <button class="btn btn-primary" onclick="loadPerformanceReport()">Generate</button>
+          </div>
+        </div>
+        <div class="spin-wrap" id="perfSpin" style="display:none"><div class="spinner"></div>Loading…</div>
+        <div id="perfOut" style="display:none">
+          <!-- Summary tiles -->
+          <div class="perf-summary" id="perfSummary"></div>
+          <div class="r-section-label" style="margin-top:14px">Daily Breakdown</div>
+          <div class="tbl-wrap">
+            <table class="rtbl">
+              <thead id="perfHead"></thead>
+              <tbody id="perfBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
 
-<label>From Date</label>
-<input type="date" id="fromDate">
-<label>To Date</label>
-<input type="date" id="toDate">
+    <!-- ══ DRR ANALYSIS ══ -->
+    <div class="r-section" id="rsec-drr">
+      <div class="card">
+        <div class="card-head"><div class="card-title">⚡ DRR Analysis — High Risk / Low Risk</div></div>
+        <div class="frow" style="margin-bottom:16px">
+          <div class="fg">
+            <label>Month</label>
+            <input type="month" id="drrMonth"/>
+          </div>
+          <div class="fg">
+            <label>Product</label>
+            <select id="drrProduct">
+              <option value="investment">Investment</option>
+              <option value="rd">RD</option>
+            </select>
+          </div>
+        </div>
+        <div class="frow" style="margin-bottom:16px">
+          <div class="fg">
+            <label>High-Risk DRR threshold (above = high risk)</label>
+            <input type="number" id="drrThreshold" placeholder="e.g. 50000" min="0"/>
+          </div>
+          <div class="fg" style="justify-content:flex-end;padding-top:18px">
+            <button class="btn btn-primary" onclick="loadDRRReport()">Generate</button>
+          </div>
+        </div>
+        <div class="spin-wrap" id="drrSpin" style="display:none"><div class="spinner"></div>Loading…</div>
+        <div id="drrOut" style="display:none">
+          <div class="drr-group" id="drrHighGroup">
+            <div class="drr-group-label risk-high">🔴 High Risk Branches</div>
+            <div class="tbl-wrap"><table class="rtbl"><thead id="drrHighHead"></thead><tbody id="drrHighBody"></tbody></table></div>
+          </div>
+          <div class="drr-group" id="drrLowGroup" style="margin-top:20px">
+            <div class="drr-group-label risk-low">🟢 Low Risk Branches</div>
+            <div class="tbl-wrap"><table class="rtbl"><thead id="drrLowHead"></thead><tbody id="drrLowBody"></tbody></table></div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-<button class="secondary" onclick="loadBranchHistory()">Get Branch History</button>
-<div class="status" id="histStatus"></div>
+    <!-- ══ ZERO ACHIEVEMENT ══ -->
+    <div class="r-section" id="rsec-zero">
+      <div class="card">
+        <div class="card-head"><div class="card-title">🚨 Zero Achievement Tracker</div></div>
+        <div class="frow" style="margin-bottom:4px">
+          <div class="fg">
+            <label>Month</label>
+            <input type="month" id="zeroMonth"/>
+          </div>
+          <div class="fg">
+            <label>Product</label>
+            <select id="zeroProduct">
+              <option value="both">Investment + RD (either zero)</option>
+              <option value="investment">Investment</option>
+              <option value="rd">RD</option>
+            </select>
+          </div>
+        </div>
+        <div class="frow" style="margin-bottom:16px">
+          <div class="fg">
+            <label>Consecutive zero days threshold</label>
+            <input type="number" id="zeroThreshold" value="2" min="1" max="31" placeholder="e.g. 2"/>
+          </div>
+          <div class="fg" style="justify-content:flex-end;padding-top:18px">
+            <button class="btn btn-primary" onclick="loadZeroReport()">Generate</button>
+          </div>
+        </div>
+        <div class="spin-wrap" id="zeroSpin" style="display:none"><div class="spinner"></div>Loading…</div>
+        <div id="zeroOut" style="display:none">
+          <div id="zeroBadges" style="margin-bottom:18px"></div>
+          <div class="r-section-label">Branch Detail</div>
+          <div class="tbl-wrap">
+            <table class="rtbl">
+              <thead>
+                <tr>
+                  <th>Branch</th><th>Manager</th>
+                  <th class="num">Total Days Submitted</th>
+                  <th class="num">Zero Days</th>
+                  <th class="num">Max Consecutive Zeros</th>
+                  <th>Streak Dates</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="zeroBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
 
-<table>
-<thead>
-<tr>
-  <th>Date</th>
-  <th>Branch</th> <th>Type</th>
-  <th>Branch Head</th>
-  <th>Target</th>
-  <th>Commitment</th>
-  <th>Achievement</th>
-  <th>No of Staff</th>
-<th>No of Non Partcipants</th>
-  <th>Shortfall</th>
-</tr>
-</thead>
-<tbody id="histBody"></tbody>
-</table>
-<hr>
-<h3>🕵️ Continuous Zero Achievers</h3>
-<label>Minimum Days of Zero Achievement</label>
-<input type="number" id="minDays" value="3" min="1">
-
-<button class="secondary" style="background:#dc3545;" onclick="findZeroAchievers()">Find Zero Achievers</button>
-<div class="status" id="zeroStatus"></div>
-
-<table>
-<thead>
-<tr>
-  <th>Branch</th>
-  <th>Branch Head</th>
-  <th>Continuous Zero Achievement Days</th>
-  <th>Period</th>
-</tr>
-</thead>
-<tbody id="zeroBody"></tbody>
-</table>
-
-<hr>
-<button class="back" onclick="goBack()">⬅ Back to Entry</button>
-</div>
-
-<script src="report.js"></script>
-</body>
-</html>
+  </div><!-- /rContent -->
+</div><!-- /sec-reports -->
