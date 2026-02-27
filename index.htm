@@ -1,213 +1,421 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RD Daily Commitment / Achievement Form</title>
-
-<style>
-body { font-family: Arial, sans-serif; background:#f4f6f8; margin: 0; padding: 0; }
-.card { max-width:420px; margin:20px auto; background:#fff; padding:16px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.1); position: relative; }
-h3 { margin-top:0; }
-label { display:block; margin-top:12px; font-weight: bold; }
-input, select, button { width:100%; padding:10px; margin-top:4px; font-size:16px; box-sizing: border-box; }
-button { margin-top:16px; background:#0b5ed7; color:#fff; border:none; border-radius:4px; cursor: pointer; }
-button:disabled { background:#999; cursor: not-allowed; }
-input:disabled { background-color: #e9ecef; color: #495057; }
-
-/* --- Fixed Middle Loading Animation --- */
-#loaderOverlay {
-  display: none; /* Hidden by default */
-  position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  background: rgba(255, 255, 255, 0.8);
-  z-index: 10;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  border-radius: 8px;
-}
-.spinner {
-  width: 40px; height: 40px;
-  border: 5px solid #f3f3f3;
-  border-top: 5px solid #0b5ed7;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-.status-text { margin-top: 10px; font-weight: bold; color: #0b5ed7; font-size: 14px; }
-</style>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Daily Performance Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Sans:ital,wght@0,400;0,500;0,600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="style.css"/>
 </head>
-
 <body>
 
-<div class="card">
-  <div id="loaderOverlay">
-    <div class="spinner"></div>
-    <div class="status-text" id="status">Loading...</div>
-  </div>
-
-  <h3>RD Daily Commitment / Achievement Form</h3>
-
-  <label>Select Date</label>
-  <input type="date" id="dateInput">
-
-  <label>Entry Type</label>
-  <select id="type" onchange="updateFormState()">
-    <option value="Commitment">Morning Commitment</option>
-    <option value="Evening">Evening Achievement</option>
-  </select>
-
-  <label>Branch</label>
-  <select id="branch" onchange="handleBranchChange()">
-    <option value="">-- Select Branch --</option>
-  </select>
-
-  <label>Branch Head</label>
-  <input id="bh">
-
-  <label>Monthly Target</label>
-  <input id="target" type="number">
-
-  <label>Commitment</label>
-  <input id="commitment" type="number">
-
-  <label>Achievement</label>
-  <input id="achievement" type="number">
-
-  <label>No. of Staff</label>
-  <input id="staff" type="number">
-
-  <label>No. of Non-Participants</label>
-  <input id="nonp" type="number">
-
-  <button id="submitBtn" onclick="submitEntry()">Submit</button>
-  <button onclick="openReport()" style="background:#198754">📊 Open Day Report</button>
+<div class="topbar">
+  <div class="logo">Daily<em>Track</em></div>
+  <div class="topdate" id="topDate"></div>
 </div>
 
-<script>
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwlm0vWQ8PWfhikA93gYimNDBjSIWgNVc3JS71hvTyEsT8HngKB00nHChpB-D_Gkj8BkQ/exec";
+<div class="nav">
+  <button class="nav-btn active" data-tab="morning" onclick="switchTab(this)">☀️ Morning Entry</button>
+  <button class="nav-btn"        data-tab="evening" onclick="switchTab(this)">🌙 Evening Entry</button>
+  <button class="nav-btn"        data-tab="reports" onclick="switchTab(this)">📊 Reports</button>
+</div>
 
-const el = id => document.getElementById(id);
-const els = {
-  date: el("dateInput"),
-  type: el("type"),
-  branch: el("branch"),
-  bh: el("bh"),
-  target: el("target"),
-  commitment: el("commitment"),
-  achievement: el("achievement"),
-  staff: el("staff"),
-  nonp: el("nonp"),
-  status: el("status"),
-  overlay: el("loaderOverlay"),
-  btn: el("submitBtn")
-};
+<div class="main">
 
-/* --- UI Helpers --- */
-function showLoading(show, text = "") {
-  els.overlay.style.display = show ? "flex" : "none";
-  els.status.innerText = text;
-  els.btn.disabled = show;
-}
+  <!-- Day strip -->
+  <div class="day-strip">
+    <div class="ds-tile a-blue">  <div class="ds-val" id="dsW">—</div><div class="ds-lbl">Working Days</div></div>
+    <div class="ds-tile a-green"> <div class="ds-val" id="dsE">—</div><div class="ds-lbl">Elapsed</div></div>
+    <div class="ds-tile a-amber"> <div class="ds-val" id="dsR">—</div><div class="ds-lbl">Remaining</div></div>
+    <div class="ds-tile">         <div class="ds-val" id="dsD">—</div><div class="ds-lbl" id="dsDL">Today</div></div>
+  </div>
 
-function clearForm() {
-  els.branch.value = "";
-  els.bh.value = "";
-  els.target.value = "";
-  els.commitment.value = "";
-  els.achievement.value = "";
-  els.staff.value = "";
-  els.nonp.value = "";
-}
+  <!-- ═══ MORNING ═══ -->
+  <div class="section active" id="sec-morning">
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">Morning Entry</div>
+        <div class="badge">Commitment</div>
+      </div>
 
-/* Set Default Date to Today */
-els.date.value = new Date().toISOString().slice(0,10);
+      <div class="frow">
+        <div class="fg">
+          <label>Date</label>
+          <input type="date" id="mDate" onchange="onMDateChange()"/>
+        </div>
+        <div class="fg">
+          <label>Branch</label>
+          <select id="mBranch" onchange="onMBranchChange()">
+            <option value="">— Select Branch —</option>
+          </select>
+        </div>
+      </div>
 
-/* 1) Load Branches on Startup */
-window.onload = () => {
-  showLoading(true, "Loading branches...");
-  fetch(SCRIPT_URL + "?action=branches")
-    .then(r => r.json())
-    .then(list => {
-      els.branch.innerHTML = '<option value="">-- Select Branch --</option>';
-      list.forEach(b => els.branch.add(new Option(b, b)));
-      showLoading(false);
-    })
-    .catch(() => showLoading(false, "Error loading branches"));
-};
+      <div class="frow">
+        <div class="fg">
+          <label>Branch Head / Manager</label>
+          <input type="text" id="mManager" readonly placeholder="Auto-populated"/>
+        </div>
+      </div>
 
-function updateFormState(){
-  const isMorning = els.type.value === "Commitment";
-  ["bh", "target", "commitment", "staff"].forEach(i => els[i].disabled = !isMorning);
-  ["achievement", "nonp"].forEach(i => els[i].disabled = isMorning);
-}
+      <!-- Skeleton shown while loading branch info -->
+      <div id="mSkeleton" style="display:none">
+        <div class="skeleton-row">
+          <div><div class="skeleton skeleton-line" style="width:70%"></div><div class="skeleton skeleton-val"></div></div>
+          <div><div class="skeleton skeleton-line" style="width:60%"></div><div class="skeleton skeleton-val"></div></div>
+          <div><div class="skeleton skeleton-line" style="width:50%"></div><div class="skeleton skeleton-val"></div></div>
+        </div>
+        <div class="skeleton-drr">
+          <div class="skeleton-drr-tile"><div class="skeleton skeleton-line" style="width:60%"></div><div class="skeleton skeleton-val" style="width:90px;height:26px"></div></div>
+          <div class="skeleton-drr-tile"><div class="skeleton skeleton-line" style="width:50%"></div><div class="skeleton skeleton-val" style="width:90px;height:26px"></div></div>
+        </div>
+        <div class="spin-wrap"><div class="spinner"></div>Loading branch data…</div>
+      </div>
 
-/* 2) Branch Change & Morning Data Sync */
-function handleBranchChange(){
-  if (!els.branch.value) return;
+      <div id="mInfoPanel" style="display:none">
+        <div class="info-panel">
+          <div><div class="ip-lbl">Remaining Investment</div><div class="ip-val" id="mIT">—</div></div>
+          <div><div class="ip-lbl">Remaining RD</div>         <div class="ip-val" id="mRT">—</div></div>
+          <div><div class="ip-lbl">Month</div>                <div class="ip-val" id="mML">—</div></div>
+        </div>
+        <div class="drr-panel">
+          <div class="drr-tile">
+            <div class="drr-lbl">Investment DRR</div>
+            <div class="drr-val" id="mDI">—</div>
+            <div class="drr-sub">Remaining target ÷ remaining days</div>
+          </div>
+          <div class="drr-tile">
+            <div class="drr-lbl">RD DRR</div>
+            <div class="drr-val" id="mDR">—</div>
+            <div class="drr-sub">Remaining target ÷ remaining days</div>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="frow">
+          <div class="fg">
+            <label>Investment Commitment</label>
+            <input type="number" id="mIC" placeholder="Enter amount" min="0"/>
+          </div>
+          <div class="fg">
+            <label>RD Commitment</label>
+            <input type="number" id="mRC" placeholder="Enter amount" min="0"/>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="mSub" onclick="submitMorning()">Submit Morning Entry</button>
+          <button class="btn btn-ghost"   onclick="resetMorning()">Clear</button>
+        </div>
+      </div>
 
-  showLoading(true, "Fetching branch data...");
+    </div>
+  </div>
 
-  // CHANGE: Added &date=${els.date.value} to the URL
-  fetch(`${SCRIPT_URL}?action=target&branch=${els.branch.value}&date=${els.date.value}`)
-    .then(r => r.json())
-    .then(data => {
-      // The backend will now return the 'Remaining Target' for the selected date
-      els.target.value = data.target || 0;
-      els.staff.value = data.staff || 0;
-      els.bh.value = data.bh || "";
-      
-      if (els.type.value === "Evening") {
-        return fetch(`${SCRIPT_URL}?action=getMorning&date=${els.date.value}&branch=${els.branch.value}`)
-          .then(r => r.json())
-          .then(d => {
-            if (d && d.found) {
-              els.bh.value = d.branchHead;
-              els.commitment.value = d.commitment;
-              els.staff.value = d.staff;
-              els.target.value = d.target; // Keep target consistent with morning entry
-            } else {
-              alert("Morning entry not found for " + els.date.value);
-            }
-          });
-      }
-    })
-    .finally(() => showLoading(false));
-}
+  <!-- ═══ EVENING ═══ -->
+  <div class="section" id="sec-evening">
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">Evening Entry</div>
+        <div class="badge eve">Achievement</div>
+      </div>
 
-function openReport(){ window.location.href = "report.html"; }
+      <div class="frow">
+        <div class="fg">
+          <label>Date</label>
+          <input type="date" id="eDate" onchange="onEDateChange()"/>
+        </div>
+        <div class="fg">
+          <label>Branch</label>
+          <select id="eBranch" onchange="onEBranchChange()">
+            <option value="">— Select Branch —</option>
+          </select>
+        </div>
+      </div>
 
-/* 3) Submit & Clear */
-function submitEntry(){
-  if(!els.branch.value) { alert("Please select a branch"); return; }
-  
-  showLoading(true, "Submitting entry...");
+      <div class="frow">
+        <div class="fg">
+          <label>Branch Head / Manager</label>
+          <input type="text" id="eManager" readonly placeholder="Auto-populated"/>
+        </div>
+      </div>
 
-  fetch(SCRIPT_URL, {
-    method: "POST",
-    mode: "no-cors",
-    body: JSON.stringify({
-      entryType: els.type.value,
-      branch: els.branch.value,
-      branchHead: els.bh.value,
-      target: +els.target.value,
-      commitment: +els.commitment.value,
-      achievement: +els.achievement.value,
-      staff: +els.staff.value,
-      nonParticipant: +els.nonp.value,
-      customDate: els.date.value // Sending user-selected date
-    })
-  }).then(() => {
-    showLoading(false, "Saved successfully!");
-    clearForm();
-    setTimeout(() => { els.status.innerText = "Loading..."; }, 2000);
-  }).catch(() => {
-    showLoading(false, "Submission failed.");
-  });
-}
+      <div id="eSkeleton" style="display:none">
+        <div class="spin-wrap"><div class="spinner"></div>Fetching morning commitment…</div>
+      </div>
 
-updateFormState();
-</script>
+      <div id="eInputArea" style="display:none">
+        <div class="commit-banner" id="eCB">
+          <div class="cb-title">Morning Commitment</div>
+          <div class="cb-vals">
+            <div><div class="cb-lbl">Investment</div><div class="cb-num" id="eSIC">—</div></div>
+            <div><div class="cb-lbl">RD</div>        <div class="cb-num" id="eSRC">—</div></div>
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fg">
+            <label>Investment Achievement</label>
+            <input type="number" id="eIA" placeholder="Enter amount" min="0"/>
+          </div>
+          <div class="fg">
+            <label>RD Achievement</label>
+            <input type="number" id="eRA" placeholder="Enter amount" min="0"/>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="eSub" onclick="submitEvening()">Submit Evening Entry</button>
+          <button class="btn btn-ghost"   onclick="resetEvening()">Clear</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══ REPORTS ═══ -->
+  <div class="section" id="sec-reports">
+
+    <!-- Password Gate -->
+    <div id="rGate" class="card">
+      <div class="card-head">
+        <div class="card-title">🔒 Reports — Password Required</div>
+      </div>
+      <div style="max-width:320px">
+        <div class="fg" style="margin-bottom:13px">
+          <label>Password</label>
+          <input type="password" id="rPwd" placeholder="Enter password" onkeydown="if(event.key==='Enter')unlockReports()"/>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="unlockReports()">Unlock Reports</button>
+        </div>
+        <div id="rPwdErr" style="display:none;color:var(--red);font-size:12px;margin-top:10px;font-weight:500">Incorrect password. Try again.</div>
+      </div>
+    </div>
+
+    <!-- Report Content (hidden until unlocked) -->
+    <div id="rContent" style="display:none">
+
+      <!-- Sub-nav -->
+      <div class="r-subnav">
+        <button class="r-sub-btn active" data-rsub="daily"       onclick="switchReport(this)">Daily Report</button>
+        <button class="r-sub-btn"        data-rsub="detailed"    onclick="switchReport(this)">Detailed Report</button>
+        <button class="r-sub-btn"        data-rsub="performance" onclick="switchReport(this)">Branch Performance</button>
+        <button class="r-sub-btn"        data-rsub="drr"         onclick="switchReport(this)">DRR Analysis</button>
+        <button class="r-sub-btn"        data-rsub="zero"        onclick="switchReport(this)">Zero Achievement</button>
+      </div>
+
+      <!-- DAILY REPORT -->
+      <div class="r-section active" id="rsec-daily">
+        <div class="card">
+          <div class="card-head"><div class="card-title">Daily Report</div></div>
+          <div class="frow" style="margin-bottom:16px">
+            <div class="fg">
+              <label>Date</label>
+              <input type="date" id="rDate" onchange="loadDailyReport()"/>
+            </div>
+            <div class="fg">
+              <label>View</label>
+              <select id="rView" onchange="loadDailyReport()">
+                <option value="commitment">Commitment</option>
+                <option value="both">Commitment &amp; Achievement</option>
+              </select>
+            </div>
+          </div>
+          <div class="spin-wrap" id="rDailySpin" style="display:none"><div class="spinner"></div>Loading report…</div>
+          <div id="rDailyOut" style="display:none">
+            <div class="r-section-label">All Branches</div>
+            <div class="tbl-wrap">
+              <table class="rtbl">
+                <thead id="rDailyHead"></thead>
+                <tbody id="rDailyBody"></tbody>
+              </table>
+            </div>
+            <div id="rNotPanel" style="margin-top:20px;display:none">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                <div id="rNoCom" style="display:none">
+                  <div class="r-section-label" style="color:var(--red)">Commitment Not Submitted</div>
+                  <div class="tag-list" id="rNoComList"></div>
+                </div>
+                <div id="rNoAch" style="display:none">
+                  <div class="r-section-label" style="color:var(--amber)">Achievement Not Submitted</div>
+                  <div class="tag-list" id="rNoAchList"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DETAILED REPORT -->
+      <div class="r-section" id="rsec-detailed">
+        <div class="card">
+          <div class="card-head"><div class="card-title">Detailed Report</div></div>
+          <div class="frow" style="margin-bottom:16px">
+            <div class="fg">
+              <label>Month</label>
+              <input type="month" id="dMonth"/>
+            </div>
+            <div class="fg">
+              <label>Product</label>
+              <select id="dProduct">
+                <option value="investment">Investment</option>
+                <option value="rd">RD</option>
+                <option value="joint">Investment + RD (Joint)</option>
+              </select>
+            </div>
+          </div>
+          <div class="btn-row" style="margin-bottom:16px">
+            <button class="btn btn-primary" onclick="loadDetailedReport()">Generate Report</button>
+          </div>
+          <div class="spin-wrap" id="rDetSpin" style="display:none"><div class="spinner"></div>Loading report…</div>
+          <div id="rDetOut" style="display:none">
+            <div class="tbl-wrap">
+              <table class="rtbl">
+                <thead id="rDetHead"></thead>
+                <tbody id="rDetBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    <!-- ══ BRANCH PERFORMANCE OVER TIME ══ -->
+    <div class="r-section" id="rsec-performance">
+      <div class="card">
+        <div class="card-head"><div class="card-title">📈 Branch Performance Over Time</div></div>
+        <div class="frow" style="margin-bottom:4px">
+          <div class="fg">
+            <label>Branch</label>
+            <select id="perfBranch">
+              <option value="">— Select Branch —</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>Month</label>
+            <input type="month" id="perfMonth"/>
+          </div>
+        </div>
+        <div class="frow" style="margin-bottom:16px">
+          <div class="fg">
+            <label>Product</label>
+            <select id="perfProduct">
+              <option value="both">Investment + RD</option>
+              <option value="investment">Investment Only</option>
+              <option value="rd">RD Only</option>
+            </select>
+          </div>
+          <div class="fg" style="justify-content:flex-end;padding-top:18px">
+            <button class="btn btn-primary" onclick="loadPerformanceReport()">Generate</button>
+          </div>
+        </div>
+        <div class="spin-wrap" id="perfSpin" style="display:none"><div class="spinner"></div>Loading…</div>
+        <div id="perfOut" style="display:none">
+          <div class="perf-summary" id="perfSummary"></div>
+          <div class="r-section-label" style="margin-top:14px">Daily Breakdown</div>
+          <div class="tbl-wrap">
+            <table class="rtbl">
+              <thead id="perfHead"></thead>
+              <tbody id="perfBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ DRR ANALYSIS ══ -->
+    <div class="r-section" id="rsec-drr">
+      <div class="card">
+        <div class="card-head"><div class="card-title">⚡ DRR Analysis — High Risk / Low Risk</div></div>
+        <div class="frow" style="margin-bottom:16px">
+          <div class="fg">
+            <label>Month</label>
+            <input type="month" id="drrMonth"/>
+          </div>
+          <div class="fg">
+            <label>Product</label>
+            <select id="drrProduct">
+              <option value="investment">Investment</option>
+              <option value="rd">RD</option>
+            </select>
+          </div>
+        </div>
+        <div class="frow" style="margin-bottom:16px">
+          <div class="fg">
+            <label>High-Risk DRR threshold (above = high risk)</label>
+            <input type="number" id="drrThreshold" placeholder="e.g. 50000" min="0"/>
+          </div>
+          <div class="fg" style="justify-content:flex-end;padding-top:18px">
+            <button class="btn btn-primary" onclick="loadDRRReport()">Generate</button>
+          </div>
+        </div>
+        <div class="spin-wrap" id="drrSpin" style="display:none"><div class="spinner"></div>Loading…</div>
+        <div id="drrOut" style="display:none">
+          <div class="drr-group" id="drrHighGroup">
+            <div class="drr-group-label risk-high">🔴 High Risk Branches</div>
+            <div class="tbl-wrap"><table class="rtbl"><thead id="drrHighHead"></thead><tbody id="drrHighBody"></tbody></table></div>
+          </div>
+          <div class="drr-group" id="drrLowGroup" style="margin-top:20px">
+            <div class="drr-group-label risk-low">🟢 Low Risk Branches</div>
+            <div class="tbl-wrap"><table class="rtbl"><thead id="drrLowHead"></thead><tbody id="drrLowBody"></tbody></table></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ ZERO ACHIEVEMENT ══ -->
+    <div class="r-section" id="rsec-zero">
+      <div class="card">
+        <div class="card-head"><div class="card-title">🚨 Zero Achievement Tracker</div></div>
+        <div class="frow" style="margin-bottom:4px">
+          <div class="fg">
+            <label>Month</label>
+            <input type="month" id="zeroMonth"/>
+          </div>
+          <div class="fg">
+            <label>Product</label>
+            <select id="zeroProduct">
+              <option value="both">Investment + RD (either zero)</option>
+              <option value="investment">Investment</option>
+              <option value="rd">RD</option>
+            </select>
+          </div>
+        </div>
+        <div class="frow" style="margin-bottom:16px">
+          <div class="fg">
+            <label>Consecutive zero days threshold</label>
+            <input type="number" id="zeroThreshold" value="2" min="1" max="31" placeholder="e.g. 2"/>
+          </div>
+          <div class="fg" style="justify-content:flex-end;padding-top:18px">
+            <button class="btn btn-primary" onclick="loadZeroReport()">Generate</button>
+          </div>
+        </div>
+        <div class="spin-wrap" id="zeroSpin" style="display:none"><div class="spinner"></div>Loading…</div>
+        <div id="zeroOut" style="display:none">
+          <div id="zeroBadges" style="margin-bottom:18px"></div>
+          <div class="r-section-label">Branch Detail</div>
+          <div class="tbl-wrap">
+            <table class="rtbl">
+              <thead>
+                <tr>
+                  <th>Branch</th><th>Manager</th>
+                  <th class="num">Total Days Submitted</th>
+                  <th class="num">Zero Days</th>
+                  <th class="num">Max Consecutive Zeros</th>
+                  <th>Streak Dates</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="zeroBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    </div><!-- /rContent -->
+  </div>
+
+</div><!-- /main -->
+<div id="toast"></div>
+
+<script src="script.js"></script>
 </body>
 </html>
