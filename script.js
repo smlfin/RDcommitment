@@ -581,12 +581,38 @@ function populateNewSelects() {
   if (!perfEl) return;
   const opts = BRANCHES.map(b => `<option value="${esc(b.branch)}">${esc(b.branch)}</option>`).join("");
   const ph = '<option value="">— Select Branch —</option>';
-  perfEl.innerHTML = ph + opts;
+  const allOpt = '<option value="all">— All Branches —</option>';
+  perfEl.innerHTML = ph + allOpt + opts;
 
   // Set default month on new selects to current month
   const now = new Date();
   const ym  = now.getFullYear() + "-" + String(now.getMonth()+1).padStart(2,"0");
   ["perfMonth","drrMonth","zeroMonth"].forEach(id => { const el = byId(id); if(el && !el.value) el.value = ym; });
+}
+
+// Show/hide date range row based on branch selection
+function perfBranchChanged() {
+  const branch = byId("perfBranch").value;
+  const rangeRow = byId("perfDateRangeRow");
+  if (!rangeRow) return;
+  if (branch === "all") {
+    rangeRow.style.display = "";
+    // Default from/to to current month range if empty
+    const fromEl = byId("perfFromDate");
+    const toEl   = byId("perfToDate");
+    if (!fromEl.value || !toEl.value) {
+      const now = new Date();
+      const ym  = now.getFullYear() + "-" + String(now.getMonth()+1).padStart(2,"0");
+      const lastDay = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+      fromEl.value = ym + "-01";
+      toEl.value   = ym + "-" + String(lastDay).padStart(2,"0");
+    }
+  } else {
+    rangeRow.style.display = "none";
+  }
+  // Hide any previous output when branch changes
+  hide("perfOut");
+  hide("perfAllOut");
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -600,9 +626,107 @@ async function loadPerformanceReport() {
   const product = byId("perfProduct").value;
 
   if (!branch) return toast("Please select a branch.", "err");
-  if (!month)  return toast("Please select a month.", "err");
+
+  // ── ALL BRANCHES path ──────────────────────────────────────
+  if (branch === "all") {
+    const fromEl = byId("perfFromDate");
+    const toEl   = byId("perfToDate");
+    if (!fromEl || !toEl) return toast("Date range inputs missing — please redeploy report.html.", "err");
+    const from = fromEl.value;
+    const to   = toEl.value;
+    if (!from || !to)   return toast("Please select From and To dates.", "err");
+    if (from > to)      return toast("From date must be before To date.", "err");
+
+    hide("perfOut");
+    hide("perfAllOut");
+    show("perfSpin");
+
+    try {
+      // Calculate total calendar days in the selected range
+      const fromMs   = new Date(from + "T00:00:00").getTime();
+      const toMs     = new Date(to   + "T00:00:00").getTime();
+      const periodDays = Math.round((toMs - fromMs) / 86400000) + 1;
+
+      // Fetch all branches in parallel
+      const results = await Promise.all(
+        BRANCHES.map(b =>
+          apiFetch({ action: "branchHistory", branch: b.branch, from, to })
+            .then(rows => ({ branch: b.branch, manager: b.manager, rows: Array.isArray(rows) ? rows : [] }))
+            .catch(() => ({ branch: b.branch, manager: b.manager, rows: [] }))
+        )
+      );
+      hide("perfSpin");
+
+      const showIn = product !== "rd";
+      const showRd = product !== "investment";
+
+      let tableRows = "";
+      results.forEach(res => {
+        let totCom = 0, totAch = 0, hitDays = 0;
+
+        res.rows.forEach(r => {
+          // Commitment
+          const ic = r.in_com !== "" ? Number(r.in_com) : 0;
+          const rc = r.rd_com !== "" ? Number(r.rd_com) : 0;
+          // Achievement
+          const ia = r.in_ach !== "" ? Number(r.in_ach) : null;
+          const ra = r.rd_ach !== "" ? Number(r.rd_ach) : null;
+
+          if (showIn && !showRd) {
+            totCom += ic;
+            if (ia !== null) totAch += ia;
+          } else if (showRd && !showIn) {
+            totCom += rc;
+            if (ra !== null) totAch += ra;
+          } else {
+            // both
+            totCom += ic + rc;
+            if (ia !== null) totAch += ia;
+            if (ra !== null) totAch += ra;
+          }
+
+          // Days target hit: achievement >= commitment (only days where achievement was submitted)
+          const achSubmitted = (showIn && ia !== null) || (showRd && ra !== null);
+          if (achSubmitted) {
+            let hit = true;
+            if (showIn && ia !== null) hit = hit && ia >= ic;
+            if (showRd && ra !== null) hit = hit && ra >= rc;
+            if (hit) hitDays++;
+          }
+        });
+
+        const achPct  = totCom > 0 ? Math.round(totAch / totCom * 100) : 0;
+        const hitPct  = periodDays > 0 ? Math.round(hitDays / periodDays * 100) : 0;
+        const achCls  = achPct >= 100 ? "ach-above" : achPct >= 70 ? "" : "ach-below";
+        const hitCls  = hitPct >= 80  ? "ach-above" : hitPct >= 50 ? "" : "ach-below";
+
+        tableRows += `<tr>
+          <td class="num">${periodDays}</td>
+          <td>${esc(res.branch)}</td>
+          <td class="num">${fmt(totCom)}</td>
+          <td class="num">${fmt(totAch)}</td>
+          <td class="num"><span class="${achCls}">${achPct}%</span></td>
+          <td class="num">${hitDays}</td>
+          <td class="num"><span class="${hitCls}">${hitPct}%</span></td>
+        </tr>`;
+      });
+
+      byId("perfAllBody").innerHTML = tableRows ||
+        '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--t4)">No data found for this period</td></tr>';
+      show("perfAllOut");
+
+    } catch(err) {
+      hide("perfSpin");
+      toast("Error: " + err.message, "err");
+    }
+    return;
+  }
+
+  // ── SINGLE BRANCH path (existing logic — unchanged) ────────
+  if (!month) return toast("Please select a month.", "err");
 
   hide("perfOut");
+  hide("perfAllOut");
   show("perfSpin");
 
   // Derive from/to date range from the YYYY-MM month string
