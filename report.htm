@@ -115,13 +115,25 @@
         <div class="frow" style="margin-bottom:4px">
           <div class="fg">
             <label>Branch</label>
-            <select id="perfBranch">
+            <select id="perfBranch" onchange="perfBranchChanged()">
               <option value="">— Select Branch —</option>
+              <option value="all">— All Branches —</option>
             </select>
           </div>
           <div class="fg">
             <label>Month</label>
             <input type="month" id="perfMonth"/>
+          </div>
+        </div>
+        <!-- Date range row — shown only when All Branches is selected -->
+        <div class="frow" id="perfDateRangeRow" style="margin-bottom:4px;display:none">
+          <div class="fg">
+            <label>From Date</label>
+            <input type="date" id="perfFromDate"/>
+          </div>
+          <div class="fg">
+            <label>To Date</label>
+            <input type="date" id="perfToDate"/>
           </div>
         </div>
         <div class="frow" style="margin-bottom:16px">
@@ -138,6 +150,8 @@
           </div>
         </div>
         <div class="spin-wrap" id="perfSpin" style="display:none"><div class="spinner"></div>Loading…</div>
+
+        <!-- Single branch output (existing — unchanged) -->
         <div id="perfOut" style="display:none">
           <!-- Summary tiles -->
           <div class="perf-summary" id="perfSummary"></div>
@@ -149,6 +163,27 @@
             </table>
           </div>
         </div>
+
+        <!-- All Branches output (new) -->
+        <div id="perfAllOut" style="display:none">
+          <div class="tbl-wrap">
+            <table class="rtbl">
+              <thead>
+                <tr>
+                  <th class="num">Period (Days)</th>
+                  <th>Branch</th>
+                  <th class="num">Commitment</th>
+                  <th class="num">Achievement</th>
+                  <th class="num">Achievement %</th>
+                  <th class="num">Days Target Hit</th>
+                  <th class="num">Days Target Hit %</th>
+                </tr>
+              </thead>
+              <tbody id="perfAllBody"></tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
     </div>
 
