@@ -584,10 +584,16 @@ function populateNewSelects() {
   const allOpt = '<option value="all">— All Branches —</option>';
   perfEl.innerHTML = ph + allOpt + opts;
 
+  // Health branch selector
+  const healthEl = byId("healthBranch");
+  if (healthEl) {
+    healthEl.innerHTML = ph + allOpt + opts;
+  }
+
   // Set default month on new selects to current month
   const now = new Date();
   const ym  = now.getFullYear() + "-" + String(now.getMonth()+1).padStart(2,"0");
-  ["perfMonth","drrMonth","zeroMonth"].forEach(id => { const el = byId(id); if(el && !el.value) el.value = ym; });
+  ["perfMonth","drrMonth","zeroMonth","healthMonth"].forEach(id => { const el = byId(id); if(el && !el.value) el.value = ym; });
 }
 
 // Show/hide date range row based on branch selection
@@ -1233,4 +1239,423 @@ async function loadDRRvsCommitReport() {
     hide("dvcSpin");
     toast("Error: " + err.message, "err");
   }
+}
+// ═══════════════════════════════════════════════════════════
+//  BRANCH HEALTH REPORT
+//  Products: Investment (in_*) and RD (rd_*)
+//  APIs used:
+//    action:"branchHistory"  → [{date, branch, manager, in_com, in_ach, rd_com, rd_ach}]
+//    action:"summaryReport"  → [{branch, manager, in_target, in_achieved, rd_target, rd_achieved}]
+// ═══════════════════════════════════════════════════════════
+
+const HEALTH_PRODUCTS = [
+  { key: "in", label: "Investment", color: "#1a56db" },
+  { key: "rd", label: "RD",         color: "#0a7c45" },
+];
+
+async function loadHealthReport() {
+  const branchSel = byId("healthBranch").value;
+  const month     = byId("healthMonth").value;
+  const out       = byId("healthOut");
+
+  if (!month) return toast("Please select a month.", "err");
+
+  out.innerHTML = "";
+  hide("healthOut"); // clear old
+  show("healthSpin");
+
+  const [yr, mo] = month.split("-").map(Number);
+  const lastDay  = new Date(yr, mo, 0).getDate();
+  const from     = month + "-01";
+  const to       = month + "-" + String(lastDay).padStart(2, "0");
+  const today    = isoToday();
+  const refDate  = today.startsWith(month) ? today : to;
+  const { working: totalWD, elapsed, remaining: remDays } = workingDays(yr, mo, refDate);
+  const monthName = new Date(yr, mo - 1, 1).toLocaleString("en-IN", { month: "long", year: "numeric" });
+
+  try {
+    // Determine which branches to analyse
+    const targetBranches = branchSel === "all" || branchSel === ""
+      ? BRANCHES
+      : BRANCHES.filter(b => b.branch === branchSel);
+
+    if (!targetBranches.length) { hide("healthSpin"); return toast("No branches found.", "err"); }
+
+    // Fetch history for all target branches in parallel
+    const histResults = await Promise.all(
+      targetBranches.map(b =>
+        apiFetch({ action: "branchHistory", branch: b.branch, from, to })
+          .then(rows => ({ branch: b.branch, manager: b.manager, inTarget: Number(b.investment || 0), rdTarget: Number(b.rd || 0), rows: Array.isArray(rows) ? rows : [] }))
+          .catch(() => ({ branch: b.branch, manager: b.manager, inTarget: 0, rdTarget: 0, rows: [] }))
+      )
+    );
+
+    hide("healthSpin");
+
+    // Build per-branch health data
+    const gradeCounts = { A: 0, B: 0, C: 0, D: 0 };
+    const cards = histResults.map(res => buildHealthCard(res, remDays, totalWD, elapsed, monthName, gradeCounts));
+
+    // Overview bar
+    const gradeHtml = ["A","B","C","D"]
+      .filter(g => gradeCounts[g] > 0)
+      .map(g => `<div class="bh-grade-mini"><div class="bh-grade-dot grade-${g}">${g}</div><span>${gradeCounts[g]}</span></div>`)
+      .join("");
+
+    out.innerHTML = `
+      <div class="bh-overview">
+        <div>
+          <div class="bh-overview-title">Branch Health — ${monthName}</div>
+          <div class="bh-overview-meta">${histResults.length} branch(es) · ${totalWD} working days · ${remDays} remaining</div>
+        </div>
+        <div class="bh-grade-pills">${gradeHtml}</div>
+      </div>
+      ${cards.join("")}`;
+
+    show("healthOut");
+
+  } catch (err) {
+    hide("healthSpin");
+    out.innerHTML = `<div style="padding:16px;color:var(--red);font-size:13px;font-weight:600">⚠ Error loading health report: ${esc(err.message)}</div>`;
+    show("healthOut");
+    toast("Error: " + err.message, "err");
+  }
+}
+
+function buildHealthCard(res, remDays, totalWD, elapsed, monthName, gradeCounts) {
+  const { branch, manager, inTarget, rdTarget, rows } = res;
+
+  // Separate evening rows (have ach values) and morning rows (have com values)
+  // In this system every row has both com and ach once evening is submitted
+  // So: rows with in_ach or rd_ach != "" are "evening" days; rows with com but no ach = "morning only"
+  const eveningRows = rows.filter(r => r.in_ach !== "" || r.rd_ach !== "");
+  const morningRows = rows.filter(r => r.in_com !== "" || r.rd_com !== "");
+  eveningRows.sort((a, b) => a.date.localeCompare(b.date));
+  morningRows.sort((a, b) => a.date.localeCompare(b.date));
+
+  // Per-product metrics
+  const PD = {};
+  HEALTH_PRODUCTS.forEach(p => {
+    const tgt = p.key === "in" ? inTarget : rdTarget;
+
+    const achVals  = eveningRows.map(r => Number(r[`${p.key}_ach`] || 0));
+    const comVals  = morningRows.map(r => Number(r[`${p.key}_com`] || 0));
+
+    const totalAch = achVals.reduce((s, v) => s + v, 0);
+    const totalCom = comVals.reduce((s, v) => s + v, 0);
+    const avgAch   = achVals.length ? totalAch / achVals.length : 0;
+    const avgCom   = comVals.length ? totalCom / comVals.length : 0;
+
+    // Remaining target & DRR
+    const rem  = tgt > 0 ? Math.max(0, tgt - totalAch) : 0;
+    const drr  = (tgt > 0 && remDays > 0) ? Math.ceil(rem / remDays) : 0;
+    const pct  = tgt > 0 ? Math.min(100, Math.round(totalAch / tgt * 100)) : 0;
+
+    // Zero days
+    const zeroDays = achVals.filter(v => v === 0).length;
+
+    // Trend: compare last 3 vs prior 3
+    const recent = achVals.slice(-3);
+    const prior  = achVals.slice(-6, -3);
+    const rAvg   = recent.length ? recent.reduce((a, b) => a + b, 0) / recent.length : 0;
+    const pAvg   = prior.length  ? prior.reduce((a, b) => a + b, 0)  / prior.length  : rAvg;
+    const trend  = pAvg === 0 ? "flat" : rAvg > pAvg * 1.05 ? "up" : rAvg < pAvg * 0.95 ? "down" : "flat";
+
+    // Commitment alignment vs DRR
+    const alignPct = drr > 0 ? Math.round(avgCom / drr * 100) : 0;
+
+    // Delivery rate: achievement vs commitment
+    const deliveryPct = totalCom > 0 ? Math.round(totalAch / totalCom * 100) : 0;
+
+    // Forecast: weighted (60% recent, 40% all-time avg)
+    const forecastRate = recent.length ? rAvg * 0.6 + avgAch * 0.4 : avgAch;
+    const projTotal    = totalAch + forecastRate * remDays;
+    const projPct      = tgt > 0 ? Math.round(projTotal / tgt * 100) : 0;
+
+    PD[p.key] = { tgt, rem, totalAch, totalCom, avgAch, avgCom, drr, pct, zeroDays, trend, alignPct, deliveryPct, achVals, comVals, projPct, forecastRate };
+  });
+
+  // ── Health Score ──────────────────────────────────────────
+  const prodsWithTgt = HEALTH_PRODUCTS.filter(p => PD[p.key].tgt > 0);
+  const avgPct       = prodsWithTgt.length ? prodsWithTgt.reduce((s, p) => s + PD[p.key].pct, 0) / prodsWithTgt.length : 0;
+  const avgAlign     = HEALTH_PRODUCTS.reduce((s, p) => s + Math.min(100, PD[p.key].alignPct), 0) / HEALTH_PRODUCTS.length;
+  const avgDelivery  = HEALTH_PRODUCTS.reduce((s, p) => s + Math.min(100, PD[p.key].deliveryPct), 0) / HEALTH_PRODUCTS.length;
+  const zeroPenalty  = HEALTH_PRODUCTS.reduce((s, p) => {
+    const z = eveningRows.length ? PD[p.key].zeroDays / eveningRows.length : 0;
+    return s + z * 100;
+  }, 0) / HEALTH_PRODUCTS.length;
+  const trendBonus = HEALTH_PRODUCTS.filter(p => PD[p.key].trend === "up").length * 3;
+  const reportRate = elapsed > 0 ? Math.round(eveningRows.length / elapsed * 100) : 0;
+
+  // Consistency score via coefficient of variation
+  const allAch = HEALTH_PRODUCTS.flatMap(p => PD[p.key].achVals.filter(v => v > 0));
+  const mean   = allAch.length ? allAch.reduce((a, b) => a + b, 0) / allAch.length : 0;
+  const cv     = mean > 0 ? Math.sqrt(allAch.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / allAch.length) / mean : 1;
+  const consistScore = Math.max(0, 100 - cv * 60);
+
+  const score = Math.min(99, Math.max(1, Math.round(
+    avgPct       * 0.38 +
+    avgAlign     * 0.20 +
+    avgDelivery  * 0.17 +
+    consistScore * 0.15 +
+    Math.max(0, 100 - zeroPenalty) * 0.10 +
+    trendBonus
+  )));
+
+  const grade = score >= 80 ? "A" : score >= 60 ? "B" : score >= 40 ? "C" : "D";
+  gradeCounts[grade]++;
+
+  // ── KPI strip ──────────────────────────────────────────────
+  const overallCom      = HEALTH_PRODUCTS.reduce((s, p) => s + PD[p.key].totalCom, 0);
+  const overallAch      = HEALTH_PRODUCTS.reduce((s, p) => s + PD[p.key].totalAch, 0);
+  const overallDelRate  = overallCom > 0 ? Math.round(overallAch / overallCom * 100) : 0;
+  const totalZeroDays   = HEALTH_PRODUCTS.reduce((s, p) => s + PD[p.key].zeroDays, 0);
+  const onTrack         = prodsWithTgt.filter(p => PD[p.key].projPct >= 90).length;
+
+  const kpiColor = (v, good, warn) => v >= good ? "kpi-green" : v >= warn ? "kpi-amber" : "kpi-red";
+
+  const kpiHtml = `
+    <div class="bh-kpi-strip">
+      <div class="bh-kpi">
+        <div class="bh-kpi-label">Health Score</div>
+        <div class="bh-kpi-value ${kpiColor(score,80,55)}">${score}</div>
+        <div class="bh-kpi-sub">out of 100</div>
+      </div>
+      <div class="bh-kpi">
+        <div class="bh-kpi-label">Delivery Rate</div>
+        <div class="bh-kpi-value ${kpiColor(overallDelRate,90,65)}">${overallDelRate}%</div>
+        <div class="bh-kpi-sub">achievement ÷ commitment</div>
+      </div>
+      <div class="bh-kpi">
+        <div class="bh-kpi-label">Reporting Rate</div>
+        <div class="bh-kpi-value ${kpiColor(reportRate,90,70)}">${reportRate}%</div>
+        <div class="bh-kpi-sub">${eveningRows.length} of ${elapsed} days</div>
+      </div>
+      <div class="bh-kpi">
+        <div class="bh-kpi-label">Products on Track</div>
+        <div class="bh-kpi-value kpi-blue">${onTrack}/${prodsWithTgt.length}</div>
+        <div class="bh-kpi-sub">forecast ≥ 90% of target</div>
+      </div>
+      <div class="bh-kpi">
+        <div class="bh-kpi-label">Zero Achievement Days</div>
+        <div class="bh-kpi-value ${totalZeroDays === 0 ? "kpi-green" : totalZeroDays <= 3 ? "kpi-amber" : "kpi-red"}">${totalZeroDays}</div>
+        <div class="bh-kpi-sub">across all products</div>
+      </div>
+    </div>`;
+
+  // ── Alignment chart ────────────────────────────────────────
+  let alignRows = "";
+  HEALTH_PRODUCTS.forEach(p => {
+    const d = PD[p.key];
+    if (!d.avgCom && !d.drr && !d.avgAch) return;
+    const maxV   = Math.max(d.avgCom, d.drr, d.avgAch, 1);
+    const cPct   = Math.min(100, (d.avgCom / maxV) * 100);
+    const aPct   = Math.min(100, (d.avgAch / maxV) * 100);
+    const dPct   = d.drr > 0 ? Math.min(100, (d.drr / maxV) * 100) : 0;
+    const achCol = d.avgAch >= d.drr * 0.9 ? "var(--green)" : "var(--red)";
+    alignRows += `
+      <div class="bh-align-row">
+        <div class="bh-align-prod">
+          <div class="bh-prod-color" style="background:${p.color}"></div>${p.label}
+        </div>
+        <div class="bh-align-bar-wrap">
+          <div class="bh-align-commit" style="width:${cPct.toFixed(1)}%;background:${p.color}"></div>
+          <div class="bh-align-ach"    style="width:${aPct.toFixed(1)}%;background:${achCol}"></div>
+          ${dPct ? `<div class="bh-align-drr-line" style="left:${dPct.toFixed(1)}%"></div>` : ""}
+        </div>
+        <div class="bh-align-nums">
+          C: <strong>${fmt(Math.round(d.avgCom))}</strong> &nbsp;|&nbsp;
+          A: <strong style="color:${achCol}">${fmt(Math.round(d.avgAch))}</strong> &nbsp;|&nbsp;
+          DRR: <strong style="color:var(--accent)">${d.drr ? fmt(d.drr) : "—"}</strong>
+        </div>
+      </div>`;
+  });
+
+  const alignHtml = `
+    <div class="bh-align">
+      <div class="bh-align-title">Daily Avg: Commitment vs Achievement vs DRR (black line = DRR target)</div>
+      ${alignRows || '<div style="font-size:12px;color:var(--t4)">No target data available</div>'}
+      <div class="bh-align-legend">
+        <div class="bh-align-leg"><div class="bh-align-leg-dot" style="background:#aaa;opacity:.5"></div>Avg Commitment</div>
+        <div class="bh-align-leg"><div class="bh-align-leg-dot" style="background:#666"></div>Avg Achievement</div>
+        <div class="bh-align-leg"><div class="bh-align-leg-dot" style="background:var(--t1);width:3px"></div>DRR Line</div>
+      </div>
+    </div>`;
+
+  // ── Product table ──────────────────────────────────────────
+  function sparklineSvg(vals, color) {
+    if (!vals || !vals.length) return `<svg width="52" height="18"></svg>`;
+    const max = Math.max(...vals, 1);
+    const pts = vals.map((v, i) => {
+      const x = vals.length === 1 ? 26 : (i / (vals.length - 1)) * 50 + 1;
+      const y = 16 - (v / max) * 14;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(" ");
+    const lastX = vals.length === 1 ? 26 : 51;
+    const lastY = 16 - (vals[vals.length-1] / max) * 14;
+    return `<svg width="52" height="18" viewBox="0 0 52 18" style="display:block">
+      <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="2.2" fill="${color}"/>
+    </svg>`;
+  }
+
+  let prodRows = "";
+  HEALTH_PRODUCTS.forEach(p => {
+    const d = PD[p.key];
+    const barColor = d.pct >= 80 ? "var(--green)" : d.pct >= 50 ? "var(--amber)" : "var(--red)";
+    const trendArrow = d.trend === "up" ? "▲" : d.trend === "down" ? "▼" : "→";
+    const trendCls   = d.trend === "up" ? "trend-up" : d.trend === "down" ? "trend-down" : "trend-flat";
+
+    const fcCls = d.pct >= 100       ? "fc-done"
+      : d.projPct >= 100             ? "fc-likely"
+      : d.projPct >= 85              ? "fc-likely"
+      : d.projPct >= 70              ? "fc-stretch"
+      : "fc-unlikely";
+    const fcTxt = d.pct >= 100       ? "✓ Achieved"
+      : d.tgt === 0                  ? "No Target"
+      : `~${Math.min(d.projPct, 999)}% EOM`;
+
+    const alignTxt  = d.drr > 0 ? `${d.alignPct}% of DRR` : d.avgCom > 0 ? `${fmt(Math.round(d.avgCom))}/day` : "—";
+    const alignColor = d.alignPct >= 90 ? "var(--green)" : d.alignPct >= 60 ? "var(--amber)" : "var(--red)";
+
+    prodRows += `<tr>
+      <td><div class="bh-prod-name"><div class="bh-prod-color" style="background:${p.color}"></div>${p.label}</div></td>
+      <td>
+        <div class="bh-mini-bar">
+          <div class="bh-mini-bg"><div class="bh-mini-fill" style="width:${d.pct}%;background:${barColor}"></div></div>
+          <div class="bh-mini-label" style="color:${barColor}">${fmt(d.totalAch)}${d.tgt ? ` / ${fmt(d.tgt)} (${d.pct}%)` : " (no target)"}</div>
+        </div>
+      </td>
+      <td style="font-size:12px"><strong style="color:var(--accent)">${fmt(Math.round(d.avgAch))}</strong>/day${d.drr ? `<div style="font-size:10px;color:var(--t4)">DRR: ${fmt(d.drr)}</div>` : ""}</td>
+      <td>
+        <div class="bh-spark-cell">
+          ${sparklineSvg(d.achVals.slice(-7), p.color)}
+          <span class="bh-trend-arrow ${trendCls}">${trendArrow}</span>
+        </div>
+      </td>
+      <td style="font-size:12px;font-weight:600;color:${alignColor}">${alignTxt}</td>
+      <td>${d.zeroDays > 0 ? `<span style="color:var(--red);font-weight:700;font-size:12px">${d.zeroDays}d</span>` : `<span style="color:var(--green);font-size:12px">✓ 0</span>`}</td>
+      <td><span class="bh-forecast ${fcCls}">${fcTxt}</span></td>
+    </tr>`;
+  });
+
+  const prodTableHtml = `
+    <div style="overflow-x:auto">
+      <table class="bh-prod-table">
+        <thead><tr>
+          <th>Product</th>
+          <th>Target vs Achievement</th>
+          <th>Avg Daily / DRR</th>
+          <th>7-Day Trend</th>
+          <th>Commitment vs DRR</th>
+          <th>Zero Days</th>
+          <th>EOM Forecast</th>
+        </tr></thead>
+        <tbody>${prodRows}</tbody>
+      </table>
+    </div>`;
+
+  // ── Insights ───────────────────────────────────────────────
+  const insights = [];
+
+  HEALTH_PRODUCTS.forEach(p => {
+    const d = PD[p.key];
+    if (!d.tgt) return;
+    if (d.pct >= 100)
+      insights.push({ type: "good", icon: "🏆", text: `${p.label} target fully achieved — ${fmt(d.totalAch)} of ${fmt(d.tgt)} (${d.pct}%).` });
+    else if (d.pct >= 80 && d.trend === "up")
+      insights.push({ type: "good", icon: "📈", text: `${p.label} strong at ${d.pct}% with positive momentum. Needs ${fmt(d.rem)} more to close.` });
+    else if (d.pct < 30 && elapsed > 5)
+      insights.push({ type: "bad", icon: "🚨", text: `${p.label} critically behind at ${d.pct}%. Requires DRR of ${fmt(d.drr)}/day to recover.` });
+    else if (d.pct < 60 && remDays < 5)
+      insights.push({ type: "bad", icon: "⏰", text: `${p.label} at ${d.pct}% with only ${remDays} days left. Very unlikely to recover.` });
+  });
+
+  HEALTH_PRODUCTS.forEach(p => {
+    const d = PD[p.key];
+    if (!d.avgCom) return;
+    if (d.drr > 0 && d.alignPct < 60)
+      insights.push({ type: "warn", icon: "⚠️", text: `${p.label} commitments avg ${fmt(Math.round(d.avgCom))}/day — only ${d.alignPct}% of DRR requirement (${fmt(d.drr)}). Under-committing.` });
+    else if (d.drr > 0 && d.alignPct >= 100)
+      insights.push({ type: "good", icon: "🎯", text: `${p.label} commitment aligns with DRR — committing at ${d.alignPct}% of required pace.` });
+  });
+
+  HEALTH_PRODUCTS.forEach(p => {
+    const d = PD[p.key];
+    if (!d.totalCom) return;
+    if (d.deliveryPct >= 110)
+      insights.push({ type: "good", icon: "💪", text: `${p.label} over-delivers on commitments — delivery rate ${d.deliveryPct}%.` });
+    else if (d.deliveryPct < 60)
+      insights.push({ type: "bad", icon: "📉", text: `${p.label} delivers only ${d.deliveryPct}% of committed amounts. Commitment discipline is low.` });
+  });
+
+  HEALTH_PRODUCTS.forEach(p => {
+    const d = PD[p.key];
+    if (d.zeroDays >= 3)
+      insights.push({ type: "bad", icon: "🔴", text: `${p.label} has ${d.zeroDays} zero-achievement days this month (${eveningRows.length > 0 ? Math.round(d.zeroDays / eveningRows.length * 100) : 0}% of reporting days).` });
+  });
+
+  const upProds   = HEALTH_PRODUCTS.filter(p => PD[p.key].trend === "up").map(p => p.label);
+  const downProds = HEALTH_PRODUCTS.filter(p => PD[p.key].trend === "down").map(p => p.label);
+  if (upProds.length)   insights.push({ type: "good", icon: "📈", text: `Positive momentum (last 3 days) in: ${upProds.join(", ")}.` });
+  if (downProds.length) insights.push({ type: "warn", icon: "📉", text: `Declining trend (last 3 days) in: ${downProds.join(", ")}.` });
+
+  if (remDays > 0) {
+    const likely   = prodsWithTgt.filter(p => PD[p.key].projPct >= 90).map(p => p.label);
+    const stretch  = prodsWithTgt.filter(p => PD[p.key].projPct >= 70 && PD[p.key].projPct < 90).map(p => p.label);
+    const unlikely = prodsWithTgt.filter(p => PD[p.key].projPct < 70).map(p => p.label);
+    if (likely.length)   insights.push({ type: "info", icon: "🔮", text: `Forecast: ${likely.join(", ")} on track to meet target by month-end.` });
+    if (stretch.length)  insights.push({ type: "warn", icon: "🎲", text: `Forecast: ${stretch.join(", ")} will need a push — projected ${stretch.map(l => `${l} ${PD[HEALTH_PRODUCTS.find(p=>p.label===l).key].projPct}%`).join(", ")}.` });
+    if (unlikely.length) insights.push({ type: "bad", icon: "❌", text: `Forecast: ${unlikely.join(", ")} unlikely to meet target without significant intervention.` });
+  }
+
+  if (cv < 0.3 && mean > 0)
+    insights.push({ type: "good", icon: "📊", text: `Consistent performer — low daily variance (CV: ${Math.round(cv * 100)}%). Reliable execution.` });
+  else if (cv > 0.8 && mean > 0)
+    insights.push({ type: "warn", icon: "🎢", text: `Volatile performance — high daily variance (CV: ${Math.round(cv * 100)}%). Output is irregular.` });
+
+  if (reportRate < 70 && elapsed > 2)
+    insights.push({ type: "bad", icon: "📋", text: `Low reporting rate: ${eveningRows.length}/${elapsed} days submitted (${reportRate}%). Missing data may hide real performance.` });
+  else if (reportRate >= 95 && elapsed > 2)
+    insights.push({ type: "good", icon: "📋", text: `Excellent reporting discipline — ${eveningRows.length}/${elapsed} working days submitted (${reportRate}%).` });
+
+  const insightsHtml = insights.length ? `
+    <div class="bh-insights">
+      <div class="bh-insights-label">Insights & Recommendations</div>
+      ${insights.slice(0, 9).map(i => `
+        <div class="bh-insight ${i.type}">
+          <span class="bh-insight-icon">${i.icon}</span>
+          <span>${i.text}</span>
+        </div>`).join("")}
+    </div>` : "";
+
+  // ── Assemble card ──────────────────────────────────────────
+  return `
+    <div class="bh-card">
+      <div class="bh-card-header">
+        <div class="bh-card-header-left">
+          <div class="bh-branch-name">${esc(branch)}</div>
+          <div class="bh-branch-meta">
+            <span>👤 ${esc(manager || "—")}</span>
+            <span>📅 ${eveningRows.length} reporting day(s)</span>
+            <span>🗓 ${monthName}</span>
+            <span>${remDays} days remaining</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;flex-shrink:0">
+          <div>
+            <div class="bh-card-grade-label">Grade</div>
+            <div class="bh-card-grade grade-${grade}">${grade}</div>
+          </div>
+          <div style="text-align:center">
+            <div class="bh-card-grade-label">Score</div>
+            <div class="bh-card-score">${score}</div>
+          </div>
+        </div>
+      </div>
+      ${kpiHtml}
+      ${alignHtml}
+      ${prodTableHtml}
+      ${insightsHtml}
+    </div>`;
 }
