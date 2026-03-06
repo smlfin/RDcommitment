@@ -200,6 +200,7 @@
         <button class="r-sub-btn"        data-rsub="performance" onclick="switchReport(this)">Branch Performance</button>
         <button class="r-sub-btn"        data-rsub="drr"         onclick="switchReport(this)">DRR Analysis</button>
         <button class="r-sub-btn"        data-rsub="zero"        onclick="switchReport(this)">Zero Achievement</button>
+        <button class="r-sub-btn"        data-rsub="drrvscom"    onclick="switchReport(this)">DRR vs Commitment</button>
       </div>
 
       <!-- DAILY REPORT -->
@@ -442,6 +443,73 @@
             </table>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- ══ DRR VS COMMITMENT ══ -->
+    <div class="r-section" id="rsec-drrvscom">
+      <div class="card">
+        <div class="card-head"><div class="card-title">📊 DRR vs Commitment</div></div>
+
+        <!-- Mode toggle -->
+        <div class="frow" style="margin-bottom:12px">
+          <div class="fg">
+            <label>Filter Mode</label>
+            <select id="dvcMode" onchange="dvcModeChanged()">
+              <option value="single">Single Date</option>
+              <option value="range">Date Range</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Single date -->
+        <div id="dvcSingleRow" class="frow" style="margin-bottom:12px">
+          <div class="fg">
+            <label>Date</label>
+            <input type="date" id="dvcDate"/>
+          </div>
+          <div class="fg"></div>
+        </div>
+
+        <!-- Date range (hidden by default) -->
+        <div id="dvcRangeRow" class="frow" style="margin-bottom:12px;display:none">
+          <div class="fg">
+            <label>From Date</label>
+            <input type="date" id="dvcFrom"/>
+          </div>
+          <div class="fg">
+            <label>To Date</label>
+            <input type="date" id="dvcTo"/>
+          </div>
+        </div>
+
+        <div class="btn-row" style="margin-bottom:16px">
+          <button class="btn btn-primary" onclick="loadDRRvsCommitReport()">Generate</button>
+        </div>
+
+        <div class="spin-wrap" id="dvcSpin" style="display:none"><div class="spinner"></div>Loading…</div>
+
+        <div id="dvcOut" style="display:none">
+          <div class="tbl-wrap">
+            <table class="rtbl">
+              <thead>
+                <tr>
+                  <th>Branch</th>
+                  <th class="num">DRR (Inv)</th>
+                  <th class="num">DRR (RD)</th>
+                  <th class="num">Commit (Inv)</th>
+                  <th class="num">Commit (RD)</th>
+                  <th class="num">Diff (Inv)</th>
+                  <th class="num">Diff (RD)</th>
+                  <th class="num">% Met (Inv)</th>
+                  <th class="num">% Met (RD)</th>
+                </tr>
+              </thead>
+              <tbody id="dvcBody"></tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
     </div>
 
