@@ -1086,3 +1086,151 @@ async function loadZeroReport() {
     toast("Error: " + err.message, "err");
   }
 }
+// ═══════════════════════════════════════════════════════════
+//  4. DRR VS COMMITMENT
+//  Compares per-branch DRR (from branchInfo) against actual
+//  commitment (from dayReport) for a single date or averaged
+//  across a date range.
+// ═══════════════════════════════════════════════════════════
+
+function dvcModeChanged() {
+  const mode = byId("dvcMode").value;
+  if (mode === "single") {
+    show("dvcSingleRow");
+    hide("dvcRangeRow");
+  } else {
+    hide("dvcSingleRow");
+    show("dvcRangeRow");
+  }
+  hide("dvcOut");
+}
+
+async function loadDRRvsCommitReport() {
+  const mode = byId("dvcMode").value;
+
+  // Build list of dates to process
+  let dates = [];
+  if (mode === "single") {
+    const d = byId("dvcDate").value;
+    if (!d) return toast("Please select a date.", "err");
+    dates = [d];
+  } else {
+    const from = byId("dvcFrom").value;
+    const to   = byId("dvcTo").value;
+    if (!from || !to)  return toast("Please select From and To dates.", "err");
+    if (from > to)     return toast("From date must be before To date.", "err");
+    // Build array of every date in range
+    let cur = new Date(from + "T00:00:00");
+    const end = new Date(to  + "T00:00:00");
+    while (cur <= end) {
+      dates.push(cur.toISOString().slice(0, 10));
+      cur.setDate(cur.getDate() + 1);
+    }
+  }
+
+  hide("dvcOut");
+  show("dvcSpin");
+
+  try {
+    // ── Step 1: fetch dayReport for each date to get commitments ──
+    // For single date: one call. For range: one call per date in parallel.
+    const dayReports = await Promise.all(
+      dates.map(d =>
+        apiFetch({ action: "dayReport", date: d })
+          .then(rows => ({ date: d, rows: Array.isArray(rows) ? rows : [] }))
+          .catch(() => ({ date: d, rows: [] }))
+      )
+    );
+
+    // ── Step 2: fetch branchInfo per branch per date for DRR ──
+    // branchInfo returns rem_in, rem_rd, drr_in, drr_rd
+    const drrResults = await Promise.all(
+      BRANCHES.map(b =>
+        Promise.all(
+          dates.map(d =>
+            apiFetch({ action: "branchInfo", branch: b.branch, date: d })
+              .then(info => ({ date: d, drr_in: Number(info.drr_in || 0), drr_rd: Number(info.drr_rd || 0) }))
+              .catch(() => ({ date: d, drr_in: 0, drr_rd: 0 }))
+          )
+        ).then(dayInfos => ({ branch: b.branch, dayInfos }))
+      )
+    );
+
+    hide("dvcSpin");
+
+    // ── Step 3: aggregate per branch ──
+    // Build a lookup: branch → { sum_drr_in, sum_drr_rd, sum_com_in, sum_com_rd, count }
+    const agg = {};
+    BRANCHES.forEach(b => {
+      agg[b.branch] = { sumDrrIn: 0, sumDrrRd: 0, sumComIn: 0, sumComRd: 0, count: 0 };
+    });
+
+    // Accumulate DRR sums from branchInfo
+    drrResults.forEach(({ branch, dayInfos }) => {
+      if (!agg[branch]) return;
+      dayInfos.forEach(({ drr_in, drr_rd }) => {
+        agg[branch].sumDrrIn += drr_in;
+        agg[branch].sumDrrRd += drr_rd;
+        agg[branch].count++;
+      });
+    });
+
+    // Accumulate commitment sums from dayReport rows
+    dayReports.forEach(({ rows }) => {
+      rows.forEach(r => {
+        if (!agg[r.branch]) return;
+        if (r.in_com !== "") agg[r.branch].sumComIn += Number(r.in_com);
+        if (r.rd_com !== "") agg[r.branch].sumComRd += Number(r.rd_com);
+      });
+    });
+
+    // ── Step 4: build table rows ──
+    const totalDates = dates.length;
+    let tableRows = "";
+
+    BRANCHES.forEach(b => {
+      const a = agg[b.branch];
+      if (!a) return;
+
+      // Average DRR across days; sum commitment across days
+      const drrIn = a.count > 0 ? Math.round(a.sumDrrIn / a.count) : 0;
+      const drrRd = a.count > 0 ? Math.round(a.sumDrrRd / a.count) : 0;
+      const comIn = a.sumComIn;
+      const comRd = a.sumComRd;
+
+      // For fair comparison on range: compare total commitment vs (avg DRR × number of days)
+      const drrInTotal = drrIn * totalDates;
+      const drrRdTotal = drrRd * totalDates;
+
+      const diffIn = comIn - drrInTotal;
+      const diffRd = comRd - drrRdTotal;
+      const pctIn  = drrInTotal > 0 ? Math.round(comIn / drrInTotal * 100) : null;
+      const pctRd  = drrRdTotal > 0 ? Math.round(comRd / drrRdTotal * 100) : null;
+
+      const diffCls = d => d >= 0 ? "ach-above" : "ach-below";
+      const pctCls  = p => p === null ? "" : p >= 100 ? "ach-above" : p >= 70 ? "" : "ach-below";
+      const fmtPct  = p => p === null ? '<span class="ach-none">—</span>' : `<span class="${pctCls(p)}">${p}%</span>`;
+      const fmtDiff = d => `<span class="${diffCls(d)}">${d >= 0 ? "+" : ""}${fmt(d)}</span>`;
+
+      tableRows += `<tr>
+        <td>${esc(b.branch)}</td>
+        <td class="num">${fmt(drrIn)}</td>
+        <td class="num">${fmt(drrRd)}</td>
+        <td class="num">${fmt(comIn)}</td>
+        <td class="num">${fmt(comRd)}</td>
+        <td class="num">${fmtDiff(diffIn)}</td>
+        <td class="num">${fmtDiff(diffRd)}</td>
+        <td class="num">${fmtPct(pctIn)}</td>
+        <td class="num">${fmtPct(pctRd)}</td>
+      </tr>`;
+    });
+
+    byId("dvcBody").innerHTML = tableRows ||
+      '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--t4)">No data found for this period</td></tr>';
+    show("dvcOut");
+
+  } catch(err) {
+    hide("dvcSpin");
+    toast("Error: " + err.message, "err");
+  }
+}
