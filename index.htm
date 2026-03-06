@@ -201,6 +201,7 @@
         <button class="r-sub-btn"        data-rsub="drr"         onclick="switchReport(this)">DRR Analysis</button>
         <button class="r-sub-btn"        data-rsub="zero"        onclick="switchReport(this)">Zero Achievement</button>
         <button class="r-sub-btn"        data-rsub="drrvscom"    onclick="switchReport(this)">DRR vs Commitment</button>
+        <button class="r-sub-btn"        data-rsub="health"      onclick="switchReport(this)">🏥 Branch Health</button>
       </div>
 
       <!-- DAILY REPORT -->
@@ -510,6 +511,31 @@
           </div>
         </div>
 
+      </div>
+    </div>
+
+    <!-- ══ BRANCH HEALTH ══ -->
+    <div class="r-section" id="rsec-health">
+      <div class="card">
+        <div class="card-head"><div class="card-title">🏥 Branch Health Report</div></div>
+        <div class="frow" style="margin-bottom:4px">
+          <div class="fg">
+            <label>Branch</label>
+            <select id="healthBranch">
+              <option value="">— Select Branch —</option>
+              <option value="all">— All Branches —</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>Month</label>
+            <input type="month" id="healthMonth"/>
+          </div>
+        </div>
+        <div class="btn-row" style="margin-bottom:16px">
+          <button class="btn btn-primary" onclick="loadHealthReport()">Run Health Check</button>
+        </div>
+        <div class="spin-wrap" id="healthSpin" style="display:none"><div class="spinner"></div>Analysing branch health…</div>
+        <div id="healthOut"></div>
       </div>
     </div>
 
